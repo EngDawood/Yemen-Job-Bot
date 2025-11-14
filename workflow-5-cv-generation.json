@@ -1,0 +1,377 @@
+{
+  "name": "5. CV Generation & Application",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": ["callback_query", "message"],
+        "additionalFields": {}
+      },
+      "name": "Application Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "apply-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callback_query?.data }}",
+              "operation": "startsWith",
+              "value2": "apply_"
+            },
+            {
+              "value1": "={{ $json.message?.text }}",
+              "operation": "startsWith",
+              "value2": "/apply"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "name": "Check Apply Command",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract job ID and user info\nconst input = $input.item.json;\nlet job_id = null;\nlet telegram_id = null;\nlet chat_id = null;\n\nif (input.callback_query) {\n  job_id = input.callback_query.data.replace('apply_', '');\n  telegram_id = input.callback_query.from.id;\n  chat_id = input.callback_query.message.chat.id;\n} else if (input.message) {\n  const parts = input.message.text.split(' ');\n  job_id = parts[1]?.replace('_', '');\n  telegram_id = input.message.from.id;\n  chat_id = input.message.chat.id;\n}\n\nif (!job_id) {\n  return {\n    json: {\n      error: true,\n      message: 'الرجاء تحديد رقم الوظيفة. مثال: /apply 123',\n      chat_id: chat_id\n    }\n  };\n}\n\nreturn {\n  json: {\n    job_id: job_id,\n    telegram_id: telegram_id,\n    chat_id: chat_id\n  }\n};"
+      },
+      "name": "Extract Job ID",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/users?telegram_id=eq.{{ $json.telegram_id }}&select=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        }
+      },
+      "name": "Get User Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/jobs?id=eq.{{ $json.job_id }}&select=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        }
+      },
+      "name": "Get Job Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json[0]?.gemini_api_key !== null && $json[0]?.gemini_api_key !== undefined }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check API Key",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $input.first().json.chat_id }}",
+        "text": "للتقديم على الوظائف، تحتاج إلى إضافة مفتاح Gemini API الخاص بك.\n\n📝 الخطوات:\n1. زر https://aistudio.google.com/\n2. انقر \"Get API Key\"\n3. انسخ المفتاح\n4. أرسله هنا باستخدام:\n/setapi YOUR_KEY_HERE\n\n💡 المفتاح مجاني ويستخدم لتوليد سيرتك الذاتية فقط.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "buttons": [
+                {
+                  "text": "🔑 الحصول على مفتاح API",
+                  "url": "https://aistudio.google.com/"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "name": "Request API Key",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1340, 500]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json[0]?.profile !== null && Object.keys($json[0]?.profile || {}).length > 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Check Profile",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $input.first().json.chat_id }}",
+        "text": "لتوليد سيرة ذاتية مخصصة، الرجاء رفع سيرتك الذاتية أولاً باستخدام:\n\n/profile\n\nسيساعدك هذا في الحصول على سيرة ذاتية احترافية ومطابقة للوظيفة! 🎯"
+      },
+      "name": "Request Profile",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1560, 500]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $input.first().json.chat_id }}",
+        "text": "جاري توليد سيرتك الذاتية المخصصة... ⏳\n\nهذا قد يستغرق 10-20 ثانية.\n\n💡 نحن نحلل متطلبات الوظيفة ونطابقها مع خبراتك."
+      },
+      "name": "Processing CV",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Prepare data for CV generation\nconst userData = $input.first().json[0];\nconst jobData = $input.item.json[0];\nconst chatId = $input.all()[0].json.chat_id;\n\nconst profile = userData.profile;\nconst job = jobData;\n\n// Build context\nconst context = {\n  user: {\n    name: profile.full_name || userData.name,\n    email: profile.email,\n    phone: profile.phone,\n    location: profile.location,\n    summary: profile.summary,\n    skills: profile.skills || [],\n    languages: profile.languages || [],\n    education: profile.education || [],\n    experience: profile.experience || [],\n    certifications: profile.certifications || [],\n    projects: profile.projects || [],\n    total_years: profile.total_experience_years || 0\n  },\n  job: {\n    title: job.title,\n    company: job.company,\n    requirements: job.details?.skills || [],\n    keywords: job.keywords || [],\n    experience_level: job.experience_level,\n    language: job.language,\n    description: job.description_clean\n  },\n  api_key: userData.gemini_api_key,\n  chat_id: chatId,\n  user_id: userData.id,\n  job_id: job.id\n};\n\nreturn { json: context };"
+      },
+      "name": "Prepare CV Context",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "queryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $json.api_key }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Create an ATS-optimized professional CV/Resume in {{ $json.job.language === 'en' ? 'English' : 'Arabic' }} language.\\n\\nIMPORTANT REQUIREMENTS:\\n1. Write in Markdown format\\n2. Match job requirements with user's relevant experience\\n3. Highlight skills that match job keywords\\n4. Use professional formatting\\n5. Keep it concise (1-2 pages)\\n6. Include only relevant information\\n\\nCANDIDATE INFORMATION:\\nName: {{ $json.user.name }}\\nEmail: {{ $json.user.email }}\\nPhone: {{ $json.user.phone }}\\nLocation: {{ $json.user.location }}\\nTotal Experience: {{ $json.user.total_years }} years\\n\\nProfessional Summary: {{ $json.user.summary }}\\n\\nSkills: {{ JSON.stringify($json.user.skills) }}\\nLanguages: {{ JSON.stringify($json.user.languages) }}\\n\\nEducation:\\n{{ JSON.stringify($json.user.education, null, 2) }}\\n\\nExperience:\\n{{ JSON.stringify($json.user.experience, null, 2) }}\\n\\n{{ $json.user.certifications?.length ? 'Certifications: ' + JSON.stringify($json.user.certifications) : '' }}\\n{{ $json.user.projects?.length ? 'Projects: ' + JSON.stringify($json.user.projects, null, 2) : '' }}\\n\\nJOB REQUIREMENTS:\\nPosition: {{ $json.job.title }}\\nCompany: {{ $json.job.company }}\\nRequired Skills: {{ JSON.stringify($json.job.requirements) }}\\nKeywords: {{ JSON.stringify($json.job.keywords) }}\\nExperience Level: {{ $json.job.experience_level }}\\n\\nFORMAT THE CV WITH:\\n# [Candidate Name]\\n\\n## Contact Information\\n[contact details]\\n\\n## Professional Summary\\n[2-3 sentences highlighting relevant experience and skills matching the job]\\n\\n## Core Skills\\n[List 6-10 skills most relevant to the job]\\n\\n## Professional Experience\\n[List experience in reverse chronological order, focusing on achievements relevant to the job]\\n\\n## Education\\n[Academic qualifications]\\n\\n## Certifications (if applicable)\\n[Relevant certifications]\\n\\n## Languages\\n[Language proficiency]\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.7,\n    \"maxOutputTokens\": 2500\n  }\n}",
+        "options": {}
+      },
+      "name": "Generate CV with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract CV content\nconst response = $input.item.json;\nconst context = $input.first().json;\n\nconst cvMarkdown = response.candidates[0].content.parts[0].text;\n\nreturn {\n  json: {\n    cv_content: cvMarkdown,\n    user_id: context.user_id,\n    job_id: context.job_id,\n    chat_id: context.chat_id,\n    job_title: context.job.title,\n    candidate_name: context.user.name\n  }\n};"
+      },
+      "name": "Extract CV Content",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "operation": "markdownToPdf",
+        "binaryPropertyName": "cv_pdf",
+        "options": {
+          "margins": {
+            "top": 20,
+            "bottom": 20,
+            "left": 20,
+            "right": 20
+          },
+          "paperSize": "A4"
+        },
+        "markdown": "={{ $json.cv_content }}"
+      },
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/cv_history",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $json.user_id }}\",\n  \"job_id\": \"{{ $json.job_id }}\",\n  \"cv_content\": {{ JSON.stringify($json.cv_content) }},\n  \"cv_format\": \"markdown\",\n  \"ai_model\": \"gemini-1.5-flash\"\n}",
+        "options": {}
+      },
+      "name": "Save CV to Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2660, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "=✅ تم توليد سيرتك الذاتية بنجاح!\\n\\n📄 الوظيفة: {{ $json.job_title }}\\n👤 المرشح: {{ $json.candidate_name }}\\n\\nتحميل السيرة الذاتية ⬇️",
+        "additionalFields": {
+          "attachments": "cv_pdf",
+          "file": "={{ $binary.cv_pdf }}"
+        }
+      },
+      "name": "Send CV to User",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/users?id=eq.{{ $json.user_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"cv_generation_count\": {{ ($json.cv_generation_count || 0) + 1 }}\n}",
+        "options": {}
+      },
+      "name": "Update CV Count",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2880, 300]
+    }
+  ],
+  "connections": {
+    "Application Trigger": {
+      "main": [[{"node": "Check Apply Command", "type": "main", "index": 0}]]
+    },
+    "Check Apply Command": {
+      "main": [[{"node": "Extract Job ID", "type": "main", "index": 0}]]
+    },
+    "Extract Job ID": {
+      "main": [[
+        {"node": "Get User Data", "type": "main", "index": 0},
+        {"node": "Get Job Data", "type": "main", "index": 0}
+      ]]
+    },
+    "Get User Data": {
+      "main": [[{"node": "Check API Key", "type": "main", "index": 0}]]
+    },
+    "Check API Key": {
+      "main": [
+        [{"node": "Check Profile", "type": "main", "index": 0}],
+        [{"node": "Request API Key", "type": "main", "index": 0}]
+      ]
+    },
+    "Check Profile": {
+      "main": [
+        [
+          {"node": "Processing CV", "type": "main", "index": 0},
+          {"node": "Prepare CV Context", "type": "main", "index": 0}
+        ],
+        [{"node": "Request Profile", "type": "main", "index": 0}]
+      ]
+    },
+    "Prepare CV Context": {
+      "main": [[{"node": "Generate CV with Gemini", "type": "main", "index": 0}]]
+    },
+    "Generate CV with Gemini": {
+      "main": [[{"node": "Extract CV Content", "type": "main", "index": 0}]]
+    },
+    "Extract CV Content": {
+      "main": [[{"node": "Convert to PDF", "type": "main", "index": 0}]]
+    },
+    "Convert to PDF": {
+      "main": [[
+        {"node": "Send CV to User", "type": "main", "index": 0},
+        {"node": "Save CV to Database", "type": "main", "index": 0}
+      ]]
+    },
+    "Save CV to Database": {
+      "main": [[{"node": "Update CV Count", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

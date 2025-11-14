@@ -1,0 +1,255 @@
+{
+  "name": "4. Job Matching & Notifications",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily Trigger (9 AM)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/users?select=*",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        }
+      },
+      "name": "Get All Users",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Loop Users",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "eq.active"
+            },
+            {
+              "name": "posted_date",
+              "value": "gte.{{ new Date(Date.now() - 24*60*60*1000).toISOString() }}"
+            },
+            {
+              "name": "category",
+              "value": "=in.({{ $json.categories.join(',') }})"
+            },
+            {
+              "name": "order",
+              "value": "posted_date.desc"
+            },
+            {
+              "name": "limit",
+              "value": "20"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        }
+      },
+      "name": "Get Matching Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Smart job matching algorithm\nconst user = $input.first().json;\nconst jobs = $input.item.json;\n\nif (!jobs || jobs.length === 0) {\n  return { json: { no_matches: true, user_id: user.telegram_id } };\n}\n\n// Calculate match score for each job\nconst matchedJobs = jobs.map(job => {\n  let score = 0;\n  const reasons = [];\n  \n  // Category match (40 points)\n  if (user.categories && user.categories.includes(job.category)) {\n    score += 40;\n    reasons.push('category_match');\n  }\n  \n  // Skills match (30 points)\n  if (user.profile?.skills && job.keywords) {\n    const userSkills = user.profile.skills.map(s => s.toLowerCase());\n    const jobKeywords = job.keywords.map(k => k.toLowerCase());\n    const matchingSkills = userSkills.filter(skill => \n      jobKeywords.some(keyword => keyword.includes(skill) || skill.includes(keyword))\n    );\n    \n    if (matchingSkills.length > 0) {\n      score += Math.min(30, matchingSkills.length * 10);\n      reasons.push(`${matchingSkills.length}_skills_match`);\n    }\n  }\n  \n  // Experience level match (20 points)\n  if (user.profile?.total_experience_years !== undefined && job.experience_level) {\n    const userYears = user.profile.total_experience_years;\n    const levelMap = {\n      'fresh': [0, 1],\n      'junior': [1, 3],\n      'mid': [3, 7],\n      'senior': [7, 100],\n      'any': [0, 100]\n    };\n    \n    const [min, max] = levelMap[job.experience_level] || [0, 100];\n    if (userYears >= min && userYears <= max) {\n      score += 20;\n      reasons.push('experience_match');\n    }\n  }\n  \n  // Language match (10 points)\n  if (user.profile?.languages && job.language) {\n    const userLangs = user.profile.languages.map(l => l.language?.toLowerCase());\n    if (job.language === 'both' || \n        (job.language === 'ar' && userLangs.includes('arabic')) ||\n        (job.language === 'en' && userLangs.includes('english'))) {\n      score += 10;\n      reasons.push('language_match');\n    }\n  }\n  \n  return {\n    ...job,\n    match_score: score,\n    match_reasons: reasons\n  };\n});\n\n// Filter jobs with score > 40 and sort by score\nconst topMatches = matchedJobs\n  .filter(j => j.match_score >= 40)\n  .sort((a, b) => b.match_score - a.match_score)\n  .slice(0, 5);\n\nif (topMatches.length === 0) {\n  return { json: { no_matches: true, user_id: user.telegram_id } };\n}\n\nreturn {\n  json: {\n    user_id: user.telegram_id,\n    chat_id: user.telegram_id,\n    name: user.name,\n    jobs: topMatches,\n    total_matches: topMatches.length\n  }\n};"
+      },
+      "name": "Calculate Match Scores",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.no_matches !== true }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "name": "Has Matches",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Format jobs for Telegram message\nconst data = $input.item.json;\nconst jobs = data.jobs;\n\nlet message = `مرحباً ${data.name}! 👋\\n\\n`;\nmessage += `لديك ${data.total_matches} وظائف جديدة مطابقة لملفك:\\n\\n`;\n\njobs.forEach((job, index) => {\n  message += `${index + 1}️⃣ *${job.title}*\\n`;\n  if (job.company) message += `🏢 ${job.company}\\n`;\n  if (job.details?.location) message += `📍 ${job.details.location}\\n`;\n  message += `🎯 نسبة المطابقة: ${job.match_score}%\\n`;\n  message += `\\nللتقديم: /apply_${job.id}\\n`;\n  message += `━━━━━━━━━━━━━━\\n\\n`;\n});\n\nmessage += `💡 نصيحة: استخدم /apply لتوليد سيرة ذاتية مخصصة`;\n\n// Create inline keyboard\nconst keyboard = {\n  inline_keyboard: jobs.map(job => [{\n    text: `📝 تقديم: ${job.title}`,\n    callback_data: `apply_${job.id}`\n  }])\n};\n\nreturn {\n  json: {\n    chat_id: data.chat_id,\n    message: message,\n    keyboard: JSON.stringify(keyboard)\n  }\n};"
+      },
+      "name": "Format Message",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "reply_markup": "={{ $json.keyboard }}"
+        }
+      },
+      "name": "Send Job Notifications",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/user_interactions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"user_id\": \"{{ $json.user_id }}\",\n  \"action\": \"jobs_sent\",\n  \"details\": {\n    \"count\": {{ $json.total_matches }},\n    \"date\": \"{{ new Date().toISOString() }}\"\n  }\n}",
+        "options": {}
+      },
+      "name": "Log Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 400]
+    },
+    {
+      "parameters": {},
+      "name": "Continue Loop",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Summary for admin\nconst allResults = $input.all();\nconst usersNotified = allResults.filter(r => !r.json.no_matches).length;\nconst totalUsers = allResults.length;\n\nreturn {\n  json: {\n    chat_id: $env.ADMIN_TELEGRAM_ID,\n    message: `📊 Daily Job Matching Complete\\n\\n` +\n             `👥 Total Users: ${totalUsers}\\n` +\n             `✅ Users Notified: ${usersNotified}\\n` +\n             `❌ No Matches: ${totalUsers - usersNotified}\\n` +\n             `⏰ ${new Date().toLocaleString('ar-YE')}`\n  }\n};"
+      },
+      "name": "Admin Summary",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2220, 300]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}"
+      },
+      "name": "Notify Admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2440, 300]
+    }
+  ],
+  "connections": {
+    "Daily Trigger (9 AM)": {
+      "main": [[{"node": "Get All Users", "type": "main", "index": 0}]]
+    },
+    "Get All Users": {
+      "main": [[{"node": "Loop Users", "type": "main", "index": 0}]]
+    },
+    "Loop Users": {
+      "main": [
+        [{"node": "Get Matching Jobs", "type": "main", "index": 0}],
+        [{"node": "Admin Summary", "type": "main", "index": 0}]
+      ]
+    },
+    "Get Matching Jobs": {
+      "main": [[{"node": "Calculate Match Scores", "type": "main", "index": 0}]]
+    },
+    "Calculate Match Scores": {
+      "main": [[{"node": "Has Matches", "type": "main", "index": 0}]]
+    },
+    "Has Matches": {
+      "main": [[
+        {"node": "Format Message", "type": "main", "index": 0}
+      ]]
+    },
+    "Format Message": {
+      "main": [[
+        {"node": "Send Job Notifications", "type": "main", "index": 0},
+        {"node": "Log Notification", "type": "main", "index": 0}
+      ]]
+    },
+    "Send Job Notifications": {
+      "main": [[{"node": "Continue Loop", "type": "main", "index": 0}]]
+    },
+    "Continue Loop": {
+      "main": [[{"node": "Loop Users", "type": "main", "index": 0}]]
+    },
+    "Admin Summary": {
+      "main": [[{"node": "Notify Admin", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}

@@ -1,0 +1,595 @@
+{
+  "name": "1. User Registration Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "webhookId": "telegram-bot-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.message.text }}",
+              "operation": "startsWith",
+              "value2": "/start"
+            },
+            {
+              "value1": "={{ $json.message.text }}",
+              "operation": "startsWith",
+              "value2": "/register"
+            }
+          ]
+        },
+        "combineOperation": "any"
+      },
+      "name": "Check Command",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "=مرحباً بك في بوت التوظيف اليمني! 🇾🇪\n\nهذا البوت يساعدك في:\n✅ إيجاد الوظائف المناسبة لك\n✅ توليد سيرة ذاتية احترافية\n✅ التقديم للوظائف بنقرة واحدة\n\nللبدء، اختر أحد الخيارات:",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "buttons": [
+                {
+                  "text": "🆕 تسجيل جديد",
+                  "callbackData": "register_new"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "ℹ️ المساعدة",
+                  "callbackData": "help"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "name": "Send Welcome Message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        680,
+        200
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ]
+      },
+      "name": "Callback Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        500
+      ],
+      "webhookId": "telegram-callback-webhook",
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.callback_query.data }}",
+              "value2": "register_new"
+            }
+          ]
+        }
+      },
+      "name": "Check Register Callback",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        460,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.callback_query.message.chat.id }}",
+        "text": "=رائع! لنبدأ التسجيل 📝\n\nما هو اسمك الكامل؟",
+        "additionalFields": {
+          "reply_markup": {
+            "force_reply": true
+          }
+        }
+      },
+      "name": "Ask for Name",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        680,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {
+          "download": false
+        }
+      },
+      "name": "Wait for Name",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        900,
+        500
+      ],
+      "webhookId": "telegram-name-webhook"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "=شكراً {{ $json.message.text }}! 👋\n\nالآن اختر المجالات التي تهتم بها:\n(يمكنك اختيار أكثر من مجال)",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "buttons": [
+                {
+                  "text": "💻 تقنية المعلومات",
+                  "callbackData": "cat_IT"
+                },
+                {
+                  "text": "⚙️ الهندسة",
+                  "callbackData": "cat_Engineering"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "🏥 الطب والصحة",
+                  "callbackData": "cat_Medical"
+                },
+                {
+                  "text": "💰 المالية",
+                  "callbackData": "cat_Finance"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "📊 التسويق",
+                  "callbackData": "cat_Marketing"
+                },
+                {
+                  "text": "📚 التعليم",
+                  "callbackData": "cat_Education"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "🏢 الإدارة",
+                  "callbackData": "cat_Administration"
+                },
+                {
+                  "text": "📋 أخرى",
+                  "callbackData": "cat_Other"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "✅ تأكيد الاختيار",
+                  "callbackData": "confirm_categories"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "name": "Ask for Categories",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        500
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Store user data temporarily\nconst telegram_id = $input.item.json.message.from.id;\nconst name = $input.item.json.message.text;\nconst username = $input.item.json.message.from.username || '';\n\n// Store in workflow static data for next steps\nreturn {\n  json: {\n    telegram_id: telegram_id,\n    name: name,\n    username: username,\n    categories: [],\n    step: 'waiting_categories'\n  }\n};"
+      },
+      "name": "Store Name Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        640
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ]
+      },
+      "name": "Category Selection Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1,
+      "position": [
+        1340,
+        500
+      ],
+      "webhookId": "telegram-category-webhook"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Handle category selection\nconst callback_data = $input.item.json.callback_query.data;\nconst telegram_id = $input.item.json.callback_query.from.id;\n\n// Get existing data from workflow\nlet userData = $input.first().json;\n\nif (callback_data.startsWith('cat_')) {\n  const category = callback_data.replace('cat_', '');\n  \n  if (!userData.categories) {\n    userData.categories = [];\n  }\n  \n  // Toggle category\n  if (userData.categories.includes(category)) {\n    userData.categories = userData.categories.filter(c => c !== category);\n  } else {\n    userData.categories.push(category);\n  }\n  \n  return {\n    json: {\n      ...userData,\n      action: 'category_toggled',\n      message: `تم ${userData.categories.includes(category) ? 'إضافة' : 'إزالة'} ${category}`\n    }\n  };\n} else if (callback_data === 'confirm_categories') {\n  if (!userData.categories || userData.categories.length === 0) {\n    return {\n      json: {\n        ...userData,\n        action: 'error',\n        message: 'الرجاء اختيار مجال واحد على الأقل!'\n      }\n    };\n  }\n  \n  return {\n    json: {\n      ...userData,\n      action: 'confirmed',\n      ready_to_save: true\n    }\n  };\n}\n\nreturn { json: userData };"
+      },
+      "name": "Process Categories",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.action }}",
+              "value2": "confirmed"
+            }
+          ]
+        }
+      },
+      "name": "Check Confirmation",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        500
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/users",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "telegram_id",
+              "value": "={{ $json.telegram_id }}"
+            },
+            {
+              "name": "name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "username",
+              "value": "={{ $json.username }}"
+            },
+            {
+              "name": "categories",
+              "value": "={{ JSON.stringify($json.categories) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2000,
+        400
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.telegram_id }}",
+        "text": "=تم التسجيل بنجاح! 🎉\n\nالمجالات المختارة:\n{{ $json.categories.map(c => '• ' + c).join('\\n') }}\n\nهل تريد رفع سيرتك الذاتية الآن لتحسين نتائج البحث؟",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "buttons": [
+                {
+                  "text": "📄 رفع السيرة الذاتية",
+                  "callbackData": "upload_cv"
+                }
+              ]
+            },
+            {
+              "buttons": [
+                {
+                  "text": "⏭️ تخطي الآن",
+                  "callbackData": "skip_cv"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "name": "Registration Complete",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        2220,
+        400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "1",
+          "name": "Telegram Bot API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.callback_query.message.chat.id }}",
+        "text": "=المجالات المختارة:\n{{ $json.categories.map(c => '• ' + c).join('\\n') }}\n\n✅ اضغط تأكيد عند الانتهاء",
+        "additionalFields": {}
+      },
+      "name": "Update Category List",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1780,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/user_interactions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "action",
+              "value": "registration_completed"
+            },
+            {
+              "name": "details",
+              "value": "={{ JSON.stringify({ categories: $json.categories }) }}"
+            }
+          ]
+        }
+      },
+      "name": "Log Interaction",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [
+        2220,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Command": {
+      "main": [
+        [
+          {
+            "node": "Send Welcome Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback Trigger": {
+      "main": [
+        [
+          {
+            "node": "Check Register Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Register Callback": {
+      "main": [
+        [
+          {
+            "node": "Ask for Name",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for Name": {
+      "main": [
+        [
+          {
+            "node": "Store Name Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ask for Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Category Selection Trigger": {
+      "main": [
+        [
+          {
+            "node": "Process Categories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Categories": {
+      "main": [
+        [
+          {
+            "node": "Check Confirmation",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Category List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Save to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Registration Complete",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Interaction",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "pinData": {},
+  "versionId": "1"
+}

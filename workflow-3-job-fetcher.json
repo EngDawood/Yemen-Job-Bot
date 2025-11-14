@@ -1,0 +1,241 @@
+{
+  "name": "3. Job Fetcher & Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "name": "Cron Trigger (Every Hour)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.YEMENHR_RSS_URL }}",
+        "options": {}
+      },
+      "name": "Fetch RSS Feed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse RSS/XML feed\nconst xml = $input.item.json;\nconst parseString = require('xml2js').parseString;\n\nreturn new Promise((resolve, reject) => {\n  parseString(xml, (err, result) => {\n    if (err) {\n      reject(err);\n    } else {\n      const items = result.rss?.channel?.[0]?.item || [];\n      const jobs = items.map(item => ({\n        json: {\n          title: item.title?.[0] || '',\n          link: item.link?.[0] || '',\n          description: item.description?.[0] || '',\n          pubDate: item.pubDate?.[0] || '',\n          guid: item.guid?.[0]?._ || item.guid?.[0] || ''\n        }\n      }));\n      resolve(jobs);\n    }\n  });\n});"
+      },
+      "name": "Parse RSS XML",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "name": "Loop Through Jobs",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/jobs?external_id=eq.{{ $json.guid }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_ANON_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_ANON_KEY }}"
+            }
+          ]
+        }
+      },
+      "name": "Check Job Exists",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.length }}",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "Is New Job",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Clean HTML from description\nconst html = $input.first().json.description;\n\n// Remove HTML tags\nlet text = html.replace(/<[^>]*>/g, ' ');\n\n// Decode HTML entities\ntext = text\n  .replace(/&nbsp;/g, ' ')\n  .replace(/&amp;/g, '&')\n  .replace(/&lt;/g, '<')\n  .replace(/&gt;/g, '>')\n  .replace(/&quot;/g, '\"')\n  .replace(/&#39;/g, \"'\");\n\n// Clean up whitespace\ntext = text.replace(/\\s+/g, ' ').trim();\n\nreturn {\n  json: {\n    ...$ input.first().json,\n    description_clean: text\n  }\n};"
+      },
+      "name": "Clean HTML",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "queryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.ADMIN_GEMINI_KEY }}"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"Analyze this job posting and extract structured information. Return ONLY valid JSON:\\n\\n{\\n  \\\"company\\\": \\\"string or null\\\",\\n  \\\"category\\\": \\\"IT|Engineering|Medical|Finance|Marketing|Education|Administration|Other\\\",\\n  \\\"keywords\\\": [\\\"keyword1\\\", \\\"keyword2\\\"],\\n  \\\"experience_level\\\": \\\"fresh|junior|mid|senior|any\\\",\\n  \\\"required_skills\\\": [\\\"skill1\\\", \\\"skill2\\\"],\\n  \\\"language\\\": \\\"ar|en|both\\\",\\n  \\\"application_method\\\": \\\"email|form|link\\\",\\n  \\\"application_contact\\\": \\\"email or URL or null\\\",\\n  \\\"location\\\": \\\"string or null\\\",\\n  \\\"salary_range\\\": \\\"string or null\\\",\\n  \\\"deadline\\\": \\\"YYYY-MM-DD or null\\\",\\n  \\\"requirements_summary\\\": \\\"brief summary\\\"\\n}\\n\\nJob Title: {{ $json.title }}\\n\\nDescription:\\n{{ $json.description_clean }}\"\n    }]\n  }],\n  \"generationConfig\": {\n    \"temperature\": 0.2,\n    \"maxOutputTokens\": 1000\n  }\n}",
+        "options": {}
+      },
+      "name": "Analyze with Gemini",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse Gemini response\nconst response = $input.item.json;\nconst jobData = $input.first().json;\nconst text = response.candidates[0].content.parts[0].text;\n\n// Extract JSON\nlet jsonText = text.trim();\nif (jsonText.startsWith('```json')) {\n  jsonText = jsonText.substring(7);\n}\nif (jsonText.startsWith('```')) {\n  jsonText = jsonText.substring(3);\n}\nif (jsonText.endsWith('```')) {\n  jsonText = jsonText.substring(0, jsonText.length - 3);\n}\n\ntry {\n  const analysis = JSON.parse(jsonText.trim());\n  \n  return {\n    json: {\n      external_id: jobData.guid,\n      title: jobData.title,\n      company: analysis.company,\n      description_raw: jobData.description,\n      description_clean: jobData.description_clean,\n      category: analysis.category,\n      keywords: analysis.keywords,\n      language: analysis.language,\n      experience_level: analysis.experience_level,\n      application_method: analysis.application_method,\n      application_contact: analysis.application_contact,\n      source_url: jobData.link,\n      posted_date: new Date(jobData.pubDate).toISOString(),\n      deadline: analysis.deadline,\n      details: {\n        skills: analysis.required_skills,\n        location: analysis.location,\n        salary: analysis.salary_range,\n        summary: analysis.requirements_summary\n      },\n      status: 'active'\n    }\n  };\n} catch (error) {\n  // If parsing fails, save with minimal data\n  return {\n    json: {\n      external_id: jobData.guid,\n      title: jobData.title,\n      company: null,\n      description_raw: jobData.description,\n      description_clean: jobData.description_clean,\n      category: 'Other',\n      keywords: [],\n      language: 'ar',\n      source_url: jobData.link,\n      posted_date: new Date(jobData.pubDate).toISOString(),\n      details: {},\n      status: 'active',\n      parsing_error: true\n    }\n  };\n}"
+      },
+      "name": "Format Job Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2000, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.SUPABASE_URL }}/rest/v1/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.SUPABASE_SECRET_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "name": "Save to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Count stats\nconst newJobs = $input.all().length;\nconst adminId = $env.ADMIN_TELEGRAM_ID;\n\nreturn {\n  json: {\n    chat_id: adminId,\n    message: `✅ Job Sync Complete\\n\\n📊 New Jobs: ${newJobs}\\n⏰ Time: ${new Date().toLocaleString('ar-YE')}`,\n    new_jobs_count: newJobs\n  }\n};"
+      },
+      "name": "Prepare Admin Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "={{ $json.message }}"
+      },
+      "name": "Notify Admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [2660, 200]
+    }
+  ],
+  "connections": {
+    "Cron Trigger (Every Hour)": {
+      "main": [[{"node": "Fetch RSS Feed", "type": "main", "index": 0}]]
+    },
+    "Fetch RSS Feed": {
+      "main": [[{"node": "Parse RSS XML", "type": "main", "index": 0}]]
+    },
+    "Parse RSS XML": {
+      "main": [[{"node": "Loop Through Jobs", "type": "main", "index": 0}]]
+    },
+    "Loop Through Jobs": {
+      "main": [
+        [{"node": "Check Job Exists", "type": "main", "index": 0}],
+        [{"node": "Prepare Admin Report", "type": "main", "index": 0}]
+      ]
+    },
+    "Check Job Exists": {
+      "main": [[{"node": "Is New Job", "type": "main", "index": 0}]]
+    },
+    "Is New Job": {
+      "main": [[
+        {"node": "Clean HTML", "type": "main", "index": 0}
+      ]]
+    },
+    "Clean HTML": {
+      "main": [[{"node": "Analyze with Gemini", "type": "main", "index": 0}]]
+    },
+    "Analyze with Gemini": {
+      "main": [[{"node": "Format Job Data", "type": "main", "index": 0}]]
+    },
+    "Format Job Data": {
+      "main": [[{"node": "Save to Supabase", "type": "main", "index": 0}]]
+    },
+    "Save to Supabase": {
+      "main": [[{"node": "Loop Through Jobs", "type": "main", "index": 0}]]
+    },
+    "Prepare Admin Report": {
+      "main": [[{"node": "Notify Admin", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {},
+  "staticData": null
+}
